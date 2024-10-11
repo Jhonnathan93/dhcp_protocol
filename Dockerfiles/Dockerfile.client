@@ -1,0 +1,17 @@
+# Use an official minimal Linux image with build tools
+FROM gcc:latest
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the client source code to the container
+COPY dhcp_client.c .
+
+# Compile the client code
+RUN gcc -o dhcp_client dhcp_client.c
+
+# Expose the UDP port 68
+EXPOSE 68/udp
+
+# Run the client program
+CMD ["./dhcp_client"]
