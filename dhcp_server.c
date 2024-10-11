@@ -5,31 +5,83 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <time.h>
 
 #define DHCP_OFFER 2
 #define DHCP_ACK 5
 #define DHCP_MAGIC_COOKIE 0x63825363
+#define MAX_CLIENTS 10  // Máximo número de clientes que pueden recibir IPs
 
 struct dhcp_packet {
-    uint8_t op;        // 1 byte
-    uint8_t htype;     // 1 byte
-    uint8_t hlen;      // 1 byte
-    uint8_t hops;      // 1 byte
-    uint32_t xid;      // 4 bytes
-    uint16_t secs;     // 2 bytes
-    uint16_t flags;    // 2 bytes
-    uint32_t ciaddr;   // 4 bytes
-    uint32_t yiaddr;   // 4 bytes (IP ofrecida o asignada)
-    uint32_t siaddr;   // 4 bytes
-    uint32_t giaddr;   // 4 bytes
-    uint8_t chaddr[16]; // 16 bytes
-    char sname[64];    // 64 bytes
-    char file[128];    // 128 bytes
-    uint32_t magic_cookie; // 4 bytes
-    uint8_t options[312];  // Opciones DHCP
+    uint8_t op;
+    uint8_t htype;
+    uint8_t hlen;
+    uint8_t hops;
+    uint32_t xid;
+    uint16_t secs;
+    uint16_t flags;
+    uint32_t ciaddr;
+    uint32_t yiaddr;
+    uint32_t siaddr;
+    uint32_t giaddr;
+    uint8_t chaddr[16];
+    char sname[64];
+    char file[128];
+    uint32_t magic_cookie;
+    uint8_t options[312];
 };
 
-void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip) {
+// Estructura para almacenar asignaciones de IP
+struct ip_assignment {
+    uint32_t ip;         // IP asignada
+    uint8_t mac[6];      // Dirección MAC del cliente
+    time_t lease_time;   // Tiempo de arrendamiento
+};
+
+struct ip_assignment ip_pool[MAX_CLIENTS];  // Pool de asignación de IPs
+uint32_t ip_range_start = 0xC0A80064;  // 192.168.0.100 en hexadecimal
+uint32_t ip_range_end = 0xC0A8006E;    // 192.168.0.110 en hexadecimal
+
+// Inicializa el pool de IPs
+void init_ip_pool() {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        ip_pool[i].ip = 0;
+        memset(ip_pool[i].mac, 0, 6);
+        ip_pool[i].lease_time = 0;
+    }
+}
+
+// Encuentra una IP libre en el rango
+uint32_t find_free_ip() {
+    for (uint32_t ip = ip_range_start; ip <= ip_range_end; ip++) {
+        int is_assigned = 0;
+        for (int i = 0; i < MAX_CLIENTS; i++) {
+            if (ip_pool[i].ip == ip) {
+                is_assigned = 1;
+                break;
+            }
+        }
+        if (!is_assigned) {
+            return ip;
+        }
+    }
+    return 0;  // No hay IPs libres
+}
+
+// Registra una asignación de IP para un cliente
+void assign_ip_to_client(uint32_t ip, uint8_t *mac) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (ip_pool[i].ip == 0) {
+            ip_pool[i].ip = ip;
+            memcpy(ip_pool[i].mac, mac, 6);
+            ip_pool[i].lease_time = time(NULL);  // Tiempo actual
+            break;
+        }
+    }
+}
+
+// Construye un mensaje DHCP Offer
+void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip, uint8_t *mac) {
     memset(packet, 0, sizeof(struct dhcp_packet));
 
     packet->op = 2;  // Servidor -> Cliente
@@ -43,13 +95,7 @@ void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip) {
     packet->yiaddr = offered_ip;  // IP ofrecida
     packet->siaddr = inet_addr("192.168.0.1");  // IP del servidor DHCP
     packet->giaddr = 0;
-    // Dirección MAC del cliente
-    packet->chaddr[0] = 0x00;
-    packet->chaddr[1] = 0x0c;
-    packet->chaddr[2] = 0x29;
-    packet->chaddr[3] = 0x3e;
-    packet->chaddr[4] = 0x53;
-    packet->chaddr[5] = 0xf7;
+    memcpy(packet->chaddr, mac, 6);  // Dirección MAC del cliente
 
     packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
 
@@ -60,7 +106,8 @@ void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip) {
     packet->options[3] = 255;  // Fin de opciones
 }
 
-void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip) {
+// Construye un mensaje DHCP ACK
+void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip, uint8_t *mac) {
     memset(packet, 0, sizeof(struct dhcp_packet));
 
     packet->op = 2;  // Servidor -> Cliente
@@ -74,7 +121,7 @@ void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip) {
     packet->yiaddr = assigned_ip;  // IP asignada
     packet->siaddr = inet_addr("192.168.0.1");  // IP del servidor DHCP
     packet->giaddr = 0;
-    memcpy(packet->chaddr, (uint8_t[]){0x00, 0x0c, 0x29, 0x3e, 0x53, 0xf7}, 6);  // MAC del cliente
+    memcpy(packet->chaddr, mac, 6);  // Dirección MAC del cliente
 
     packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
 
@@ -90,8 +137,11 @@ int main() {
     struct sockaddr_in server_addr, client_addr;
     struct dhcp_packet dhcp_request, dhcp_offer, dhcp_ack;
     socklen_t client_addr_len = sizeof(client_addr);
-    uint32_t offered_ip = inet_addr("192.168.0.100");  // IP a ofrecer
-    uint32_t assigned_ip = inet_addr("192.168.0.100"); // IP asignada
+    uint32_t offered_ip;
+    uint8_t client_mac[6];
+
+    // Inicializar pool de IPs
+    init_ip_pool();
 
     // Crear socket UDP
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -123,14 +173,27 @@ int main() {
 
         printf("DHCP Request recibido del cliente.\n");
 
+        // Obtener la MAC del cliente
+        memcpy(client_mac, dhcp_request.chaddr, 6);
+
+        // Asignar una IP libre
+        offered_ip = find_free_ip();
+        if (offered_ip == 0) {
+            printf("No hay IPs disponibles.\n");
+            continue;
+        }
+
+        // Registrar la IP para el cliente
+        assign_ip_to_client(offered_ip, client_mac);
+
         // Enviar DHCP ACK al cliente
-        construct_dhcp_ack(&dhcp_ack, assigned_ip);
+        construct_dhcp_ack(&dhcp_ack, offered_ip, client_mac);
         if (sendto(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&client_addr, client_addr_len) < 0) {
             perror("Error al enviar DHCP ACK");
             continue;
         }
 
-        printf("DHCP ACK enviado: IP asignada = %s\n", inet_ntoa(*(struct in_addr *)&assigned_ip));
+        printf("DHCP ACK enviado: IP asignada = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
     }
 
     close(sock);
