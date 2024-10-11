@@ -105,7 +105,7 @@ int main() {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(67);  // Puerto DHCP del servidor
-    server_addr.sin_addr.s_addr = htonl();  // Broadcast
+    server_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);  // Broadcast
 
     // Permitir el uso de broadcast en el socket
     int broadcastEnable = 1;
