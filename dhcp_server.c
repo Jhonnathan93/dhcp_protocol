@@ -9,6 +9,7 @@
 
 #define DHCP_OFFER 2
 #define DHCP_ACK 5
+#define DHCP_NAK 6  // Agregamos para manejar el caso de no asignación
 #define DHCP_MAGIC_COOKIE 0x63825363
 #define MAX_CLIENTS 10  // Máximo número de clientes que pueden recibir IPs
 #define LEASE_TIME 60   // Tiempo de arrendamiento en segundos
@@ -153,43 +154,68 @@ void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip, uint8_
     packet->options[3] = 255;  // Fin de opciones
 }
 
+// Construye un mensaje DHCP NAK cuando no se puede asignar IP
+void construct_dhcp_nak(struct dhcp_packet *packet, uint8_t *mac) {
+    memset(packet, 0, sizeof(struct dhcp_packet));
+
+    packet->op = 2;  // Servidor -> Cliente
+    packet->htype = 1;  // Ethernet
+    packet->hlen = 6;   // Tamaño de la dirección HW
+    packet->hops = 0;
+    packet->xid = htonl(0x12345678);  // ID de transacción
+    packet->secs = 0;
+    packet->flags = 0;
+    packet->ciaddr = 0;
+    packet->yiaddr = 0;  // No hay IP para asignar
+    packet->siaddr = inet_addr("192.168.0.1");  // IP del servidor DHCP
+    packet->giaddr = 0;
+    memcpy(packet->chaddr, mac, 6);  // Dirección MAC del cliente
+
+    packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
+
+    // Opciones DHCP
+    packet->options[0] = 53;  // DHCP Message Type
+    packet->options[1] = 1;   // Longitud
+    packet->options[2] = DHCP_NAK;  // DHCP NAK
+    packet->options[3] = 255;  // Fin de opciones
+}
+
 int main() {
     int sock;
     struct sockaddr_in server_addr, client_addr;
-    struct dhcp_packet dhcp_request, dhcp_offer, dhcp_ack;
+    struct dhcp_packet dhcp_request, dhcp_offer, dhcp_ack, dhcp_nak;
     socklen_t client_addr_len = sizeof(client_addr);
     uint32_t offered_ip;
     uint8_t client_mac[6];
 
-    // Inicializar pool de IPs
-    init_ip_pool();
-
-    // Crear socket UDP
-    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+    // Crear socket
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
         perror("Error al crear socket");
-        return 1;
+        exit(1);
     }
 
-    // Configurar dirección del servidor DHCP
-    memset(&server_addr, 0, sizeof(server_addr));
+    // Configurar la dirección del servidor
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(67);  // Puerto DHCP del servidor
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);  // Escuchar en cualquier IP
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(67);  // Puerto DHCP
 
-    // Enlazar el socket a la dirección del servidor
+    // Asociar el socket al puerto
     if (bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error al enlazar socket");
-        close(sock);
-        return 1;
+        perror("Error al hacer bind");
+        exit(1);
     }
 
     printf("Servidor DHCP en ejecución, esperando solicitudes...\n");
 
+    // Inicializar el pool de IPs
+    init_ip_pool();
+
     while (1) {
-        // Revisar si alguna IP ha expirado
+        // Verificar si hay arrendamientos expirados
         release_expired_ips();
 
-        // Esperar DHCP Request del cliente
+        // Recibir DHCP Request
         if (recvfrom(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&client_addr, &client_addr_len) < 0) {
             perror("Error al recibir datos");
             continue;
@@ -199,10 +225,18 @@ int main() {
         printf("DHCP Request recibido del cliente.\n");
         memcpy(client_mac, dhcp_request.chaddr, 6);
 
-        // Asignar IP dinámica
+        // Buscar IP libre
         offered_ip = find_free_ip();
         if (offered_ip == 0) {
             printf("No hay más direcciones IP disponibles.\n");
+
+            // Construir y enviar DHCP NAK
+            construct_dhcp_nak(&dhcp_nak, client_mac);
+            if (sendto(sock, &dhcp_nak, sizeof(dhcp_nak), 0, (struct sockaddr *)&client_addr, client_addr_len) < 0) {
+                perror("Error al enviar DHCP NAK");
+            } else {
+                printf("DHCP NAK enviado.\n");
+            }
             continue;
         }
 
