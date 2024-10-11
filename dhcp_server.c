@@ -11,6 +11,7 @@
 #define DHCP_ACK 5
 #define DHCP_MAGIC_COOKIE 0x63825363
 #define MAX_CLIENTS 10  // Máximo número de clientes que pueden recibir IPs
+#define LEASE_TIME 60   // Tiempo de arrendamiento en segundos
 
 struct dhcp_packet {
     uint8_t op;
@@ -35,7 +36,8 @@ struct dhcp_packet {
 struct ip_assignment {
     uint32_t ip;         // IP asignada
     uint8_t mac[6];      // Dirección MAC del cliente
-    time_t lease_time;   // Tiempo de arrendamiento
+    time_t lease_start;  // Tiempo de inicio del arrendamiento
+    int lease_duration;  // Duración del arrendamiento en segundos
 };
 
 struct ip_assignment ip_pool[MAX_CLIENTS];  // Pool de asignación de IPs
@@ -47,7 +49,8 @@ void init_ip_pool() {
     for (int i = 0; i < MAX_CLIENTS; i++) {
         ip_pool[i].ip = 0;
         memset(ip_pool[i].mac, 0, 6);
-        ip_pool[i].lease_time = 0;
+        ip_pool[i].lease_start = 0;
+        ip_pool[i].lease_duration = 0;
     }
 }
 
@@ -71,11 +74,29 @@ uint32_t find_free_ip() {
 // Registra una asignación de IP para un cliente
 void assign_ip_to_client(uint32_t ip, uint8_t *mac) {
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (ip_pool[i].ip == 0) {
+        if (ip_pool[i].ip == 0) {  // Encontrar entrada libre
             ip_pool[i].ip = ip;
             memcpy(ip_pool[i].mac, mac, 6);
-            ip_pool[i].lease_time = time(NULL);  // Tiempo actual
+            ip_pool[i].lease_start = time(NULL);  // Inicio del arrendamiento
+            ip_pool[i].lease_duration = LEASE_TIME;
             break;
+        }
+    }
+}
+
+// Libera una IP si el arrendamiento ha expirado
+void release_expired_ips() {
+    time_t current_time = time(NULL);
+
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (ip_pool[i].ip != 0) {  // Si hay una IP asignada
+            if (difftime(current_time, ip_pool[i].lease_start) > ip_pool[i].lease_duration) {
+                printf("IP %s liberada (lease expirado).\n", inet_ntoa(*(struct in_addr *)&ip_pool[i].ip));
+                ip_pool[i].ip = 0;  // Liberar la IP
+                memset(ip_pool[i].mac, 0, 6);
+                ip_pool[i].lease_start = 0;
+                ip_pool[i].lease_duration = 0;
+            }
         }
     }
 }
@@ -165,35 +186,36 @@ int main() {
     printf("Servidor DHCP en ejecución, esperando solicitudes...\n");
 
     while (1) {
+        // Revisar si alguna IP ha expirado
+        release_expired_ips();
+
         // Esperar DHCP Request del cliente
         if (recvfrom(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&client_addr, &client_addr_len) < 0) {
-            perror("Error al recibir DHCP Request");
+            perror("Error al recibir datos");
             continue;
         }
 
+        // Procesar DHCP Request
         printf("DHCP Request recibido del cliente.\n");
-
-        // Obtener la MAC del cliente
         memcpy(client_mac, dhcp_request.chaddr, 6);
 
-        // Asignar una IP libre
+        // Asignar IP dinámica
         offered_ip = find_free_ip();
         if (offered_ip == 0) {
-            printf("No hay IPs disponibles.\n");
+            printf("No hay más direcciones IP disponibles.\n");
             continue;
         }
 
-        // Registrar la IP para el cliente
+        // Registrar la IP asignada
         assign_ip_to_client(offered_ip, client_mac);
 
-        // Enviar DHCP ACK al cliente
+        // Construir y enviar DHCP ACK
         construct_dhcp_ack(&dhcp_ack, offered_ip, client_mac);
         if (sendto(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&client_addr, client_addr_len) < 0) {
             perror("Error al enviar DHCP ACK");
-            continue;
+        } else {
+            printf("DHCP ACK enviado: IP asignada = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
         }
-
-        printf("DHCP ACK enviado: IP asignada = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
     }
 
     close(sock);
