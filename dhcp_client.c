@@ -29,6 +29,31 @@ struct dhcp_packet {
     uint8_t options[312];  // Opciones DHCP
 };
 
+// Función para extraer las opciones DHCP como la máscara de red, puerta de enlace, y DNS
+void parse_dhcp_options(uint8_t *options) {
+    int i = 0;
+    while (i < 312 && options[i] != 255) {  // 255 es el final de las opciones
+        uint8_t option_type = options[i];
+        uint8_t option_length = options[i + 1];
+        
+        if (option_type == 1) {  // Máscara de subred
+            struct in_addr netmask;
+            memcpy(&netmask, &options[i + 2], 4);
+            printf("Máscara de subred: %s\n", inet_ntoa(netmask));
+        } else if (option_type == 3) {  // Puerta de enlace predeterminada
+            struct in_addr gateway;
+            memcpy(&gateway, &options[i + 2], 4);
+            printf("Puerta de enlace: %s\n", inet_ntoa(gateway));
+        } else if (option_type == 6) {  // Servidor DNS
+            struct in_addr dns;
+            memcpy(&dns, &options[i + 2], 4);
+            printf("Servidor DNS: %s\n", inet_ntoa(dns));
+        }
+
+        i += 2 + option_length;  // Mover al siguiente campo de opción
+    }
+}
+
 void construct_dhcp_discover(struct dhcp_packet *packet) {
     memset(packet, 0, sizeof(struct dhcp_packet));
     
@@ -134,6 +159,9 @@ int main() {
 
     offered_ip = dhcp_offer.yiaddr;
     printf("DHCP Offer recibido: IP ofrecida = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
+
+    // Parsear las opciones del DHCP Offer (máscara, puerta de enlace, DNS)
+    parse_dhcp_options(dhcp_offer.options);
 
     // Enviar DHCP Request
     construct_dhcp_request(&dhcp_request, offered_ip);
