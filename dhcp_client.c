@@ -101,21 +101,24 @@ void renew_lease(int sock, struct sockaddr_in *server_addr, uint32_t offered_ip)
     printf("DHCP Request enviado para renovación del lease.\n");
 }
 
+// Función para parsear las opciones DHCP
 void parse_dhcp_options(uint8_t *options, uint32_t *subnet_mask, uint32_t *gateway, uint32_t *dns_server) {
     int i = 0;
-    while (i < 312 && options[i] != 255) {  // 255 marca el final de las opciones
+    while (i < 312 && options[i] != 255) {  // 255 es el fin de las opciones
         switch (options[i]) {
-            case 1:  // Subnet Mask
-                memcpy(subnet_mask, &options[i + 2], 4);
+            case 1:  // Máscara de red
+                memcpy(subnet_mask, &options[i + 2], 4);  // La máscara es de 4 bytes
                 break;
-            case 3:  // Router (Gateway)
-                memcpy(gateway, &options[i + 2], 4);
+            case 3:  // Puerta de enlace
+                memcpy(gateway, &options[i + 2], 4);  // La puerta de enlace es de 4 bytes
                 break;
-            case 6:  // DNS Server
-                memcpy(dns_server, &options[i + 2], 4);
+            case 6:  // Servidor DNS
+                memcpy(dns_server, &options[i + 2], 4);  // El servidor DNS es de 4 bytes
+                break;
+            default:
                 break;
         }
-        i += options[i + 1] + 2;  // Saltar a la siguiente opción
+        i += options[i + 1] + 2;  // Avanzar al siguiente campo (tipo + longitud)
     }
 }
 
@@ -168,12 +171,13 @@ int main() {
     offered_ip = dhcp_offer.yiaddr;
     printf("DHCP Offer recibido: IP ofrecida = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
 
-    // Analizar las opciones DHCP (máscara, gateway, DNS)
+    // Parsear las opciones DHCP para obtener la máscara de red, puerta de enlace, y servidor DNS
     parse_dhcp_options(dhcp_offer.options, &subnet_mask, &gateway, &dns_server);
+
     printf("Máscara de red: %s\n", inet_ntoa(*(struct in_addr *)&subnet_mask));
     printf("Puerta de enlace: %s\n", inet_ntoa(*(struct in_addr *)&gateway));
     printf("Servidor DNS: %s\n", inet_ntoa(*(struct in_addr *)&dns_server));
-    
+
     // Registrar el inicio del lease
     lease_start = time(NULL);
 
