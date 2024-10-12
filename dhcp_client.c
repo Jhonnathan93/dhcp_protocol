@@ -5,28 +5,30 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <time.h>
 
 #define DHCP_DISCOVER 1
 #define DHCP_REQUEST 3
 #define DHCP_MAGIC_COOKIE 0x63825363
+#define LEASE_TIME 60   // Lease de ejemplo en segundos
 
 struct dhcp_packet {
-    uint8_t op;        // 1 byte
-    uint8_t htype;     // 1 byte
-    uint8_t hlen;      // 1 byte
-    uint8_t hops;      // 1 byte
-    uint32_t xid;      // 4 bytes
-    uint16_t secs;     // 2 bytes
-    uint16_t flags;    // 2 bytes
-    uint32_t ciaddr;   // 4 bytes
-    uint32_t yiaddr;   // 4 bytes
-    uint32_t siaddr;   // 4 bytes
-    uint32_t giaddr;   // 4 bytes
-    uint8_t chaddr[16]; // 16 bytes
-    char sname[64];    // 64 bytes
-    char file[128];    // 128 bytes
-    uint32_t magic_cookie; // 4 bytes
-    uint8_t options[312];  // Opciones DHCP
+    uint8_t op;
+    uint8_t htype;
+    uint8_t hlen;
+    uint8_t hops;
+    uint32_t xid;
+    uint16_t secs;
+    uint16_t flags;
+    uint32_t ciaddr;
+    uint32_t yiaddr;
+    uint32_t siaddr;
+    uint32_t giaddr;
+    uint8_t chaddr[16];
+    char sname[64];
+    char file[128];
+    uint32_t magic_cookie;
+    uint8_t options[312];
 };
 
 void construct_dhcp_discover(struct dhcp_packet *packet) {
@@ -36,14 +38,13 @@ void construct_dhcp_discover(struct dhcp_packet *packet) {
     packet->htype = 1;  // Ethernet
     packet->hlen = 6;   // Tamaño de la dirección HW
     packet->hops = 0;
-    packet->xid = htonl(0x12345678);  // ID de transacción (aleatorio)
+    packet->xid = htonl(0x12345678);  // ID de transacción
     packet->secs = 0;
     packet->flags = htons(0x8000);  // Broadcast
     packet->ciaddr = 0;
     packet->yiaddr = 0;
     packet->siaddr = 0;
     packet->giaddr = 0;
-    // Dirección MAC del cliente (ficticia para este ejemplo)
     packet->chaddr[0] = 0x00;
     packet->chaddr[1] = 0x0c;
     packet->chaddr[2] = 0x29;
@@ -53,10 +54,9 @@ void construct_dhcp_discover(struct dhcp_packet *packet) {
 
     packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
 
-    // Opciones DHCP
     packet->options[0] = 53;  // DHCP Message Type
     packet->options[1] = 1;   // Longitud
-    packet->options[2] = DHCP_DISCOVER;  // DHCP Discover
+    packet->options[2] = DHCP_DISCOVER;
     packet->options[3] = 255;  // Fin de opciones
 }
 
@@ -65,9 +65,9 @@ void construct_dhcp_request(struct dhcp_packet *packet, uint32_t offered_ip) {
 
     packet->op = 1;  // Cliente -> Servidor
     packet->htype = 1;  // Ethernet
-    packet->hlen = 6;   // Tamaño de la dirección HW
+    packet->hlen = 6;
     packet->hops = 0;
-    packet->xid = htonl(0x12345678);  // Usamos el mismo ID de transacción
+    packet->xid = htonl(0x12345678);  // ID de transacción
     packet->secs = 0;
     packet->flags = htons(0x8000);  // Broadcast
     packet->ciaddr = 0;
@@ -78,36 +78,51 @@ void construct_dhcp_request(struct dhcp_packet *packet, uint32_t offered_ip) {
 
     packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
 
-    // Opciones DHCP
     packet->options[0] = 53;  // DHCP Message Type
-    packet->options[1] = 1;   // Longitud
-    packet->options[2] = DHCP_REQUEST;  // DHCP Request
+    packet->options[1] = 1;
+    packet->options[2] = DHCP_REQUEST;
     packet->options[3] = 50;  // Requested IP Address
     packet->options[4] = 4;   // Longitud
     memcpy(&packet->options[5], &offered_ip, 4);  // IP ofrecida
     packet->options[9] = 255;  // Fin de opciones
 }
 
+void renew_lease(int sock, struct sockaddr_in *server_addr, uint32_t offered_ip) {
+    struct dhcp_packet dhcp_request;
+    socklen_t server_addr_len = sizeof(*server_addr);
+
+    // Enviar DHCP Request para renovar el lease
+    construct_dhcp_request(&dhcp_request, offered_ip);
+    if (sendto(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)server_addr, server_addr_len) < 0) {
+        perror("Error al enviar DHCP Request para renovación");
+        close(sock);
+        exit(1);
+    }
+    printf("DHCP Request enviado para renovación del lease.\n");
+}
+
 int main() {
     int sock;
     struct sockaddr_in server_addr;
-    struct dhcp_packet dhcp_discover, dhcp_offer, dhcp_request;
+    struct dhcp_packet dhcp_discover, dhcp_offer;
     socklen_t server_addr_len = sizeof(server_addr);
     uint32_t offered_ip;
+    time_t lease_start;
+    int lease_duration = LEASE_TIME;
 
     // Crear socket UDP
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        perror("Socket creation failed");
+        perror("Error al crear socket");
         return 1;
     }
 
-    // Configurar dirección del servidor DHCP
+    // Configurar la dirección del servidor DHCP
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(67);  // Puerto DHCP del servidor
+    server_addr.sin_port = htons(67);  // Puerto DHCP
     server_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);  // Broadcast
 
-    // Permitir el uso de broadcast en el socket
+    // Habilitar el uso de broadcast en el socket
     int broadcastEnable = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable)) < 0) {
         perror("Error al habilitar broadcast");
@@ -135,15 +150,18 @@ int main() {
     offered_ip = dhcp_offer.yiaddr;
     printf("DHCP Offer recibido: IP ofrecida = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
     
-    // Enviar DHCP Request
-    construct_dhcp_request(&dhcp_request, offered_ip);
-    if (sendto(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
-        perror("Error al enviar DHCP Request");
-        close(sock);
-        return 1;
+    // Registrar el inicio del lease
+    lease_start = time(NULL);
+
+    // Mientras no expire el lease, renovamos cuando queden pocos segundos
+    while (difftime(time(NULL), lease_start) < lease_duration) {
+        sleep(lease_duration / 2);  // Dormir hasta la mitad del lease
+
+        // Renovar el lease antes de que expire
+        renew_lease(sock, &server_addr, offered_ip);
     }
 
-    printf("DHCP Request enviado.\n");
+    printf("Lease expirado.\n");
 
     close(sock);
     return 0;
