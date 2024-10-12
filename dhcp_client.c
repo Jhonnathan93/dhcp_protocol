@@ -101,12 +101,30 @@ void renew_lease(int sock, struct sockaddr_in *server_addr, uint32_t offered_ip)
     printf("DHCP Request enviado para renovación del lease.\n");
 }
 
+void parse_dhcp_options(uint8_t *options, uint32_t *subnet_mask, uint32_t *gateway, uint32_t *dns_server) {
+    int i = 0;
+    while (i < 312 && options[i] != 255) {  // 255 marca el final de las opciones
+        switch (options[i]) {
+            case 1:  // Subnet Mask
+                memcpy(subnet_mask, &options[i + 2], 4);
+                break;
+            case 3:  // Router (Gateway)
+                memcpy(gateway, &options[i + 2], 4);
+                break;
+            case 6:  // DNS Server
+                memcpy(dns_server, &options[i + 2], 4);
+                break;
+        }
+        i += options[i + 1] + 2;  // Saltar a la siguiente opción
+    }
+}
+
 int main() {
     int sock;
     struct sockaddr_in server_addr;
     struct dhcp_packet dhcp_discover, dhcp_offer;
     socklen_t server_addr_len = sizeof(server_addr);
-    uint32_t offered_ip;
+    uint32_t offered_ip, subnet_mask = 0, gateway = 0, dns_server = 0;
     time_t lease_start;
     int lease_duration = LEASE_TIME;
 
@@ -149,6 +167,12 @@ int main() {
 
     offered_ip = dhcp_offer.yiaddr;
     printf("DHCP Offer recibido: IP ofrecida = %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
+
+    // Analizar las opciones DHCP (máscara, gateway, DNS)
+    parse_dhcp_options(dhcp_offer.options, &subnet_mask, &gateway, &dns_server);
+    printf("Máscara de red: %s\n", inet_ntoa(*(struct in_addr *)&subnet_mask));
+    printf("Puerta de enlace: %s\n", inet_ntoa(*(struct in_addr *)&gateway));
+    printf("Servidor DNS: %s\n", inet_ntoa(*(struct in_addr *)&dns_server));
     
     // Registrar el inicio del lease
     lease_start = time(NULL);
