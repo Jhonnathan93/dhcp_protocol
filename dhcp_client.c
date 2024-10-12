@@ -8,6 +8,7 @@
 #include <time.h>
 
 #define DHCP_DISCOVER 1
+#define DHCP_OFFER    2
 #define DHCP_REQUEST  3
 #define DHCP_ACK      5
 #define DHCP_NAK      6
