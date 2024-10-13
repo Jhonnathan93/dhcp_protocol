@@ -138,7 +138,26 @@ void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip, uint8
     packet->options[0] = 53;
     packet->options[1] = 1;
     packet->options[2] = DHCP_OFFER;
-    packet->options[3] = 255;
+
+    // Máscara de red (opción 1)
+    packet->options[3] = 1;
+    packet->options[4] = 4;
+    uint32_t subnet_mask = inet_addr("255.255.255.0");
+    memcpy(&packet->options[5], &subnet_mask, 4);
+
+    // Puerta de enlace (opción 3)
+    packet->options[9] = 3;
+    packet->options[10] = 4;
+    uint32_t gateway = inet_addr("192.168.0.1");
+    memcpy(&packet->options[11], &gateway, 4);
+
+    // DNS (opción 6)
+    packet->options[15] = 6;
+    packet->options[16] = 4;
+    uint32_t dns_server = inet_addr("8.8.8.8");
+    memcpy(&packet->options[17], &dns_server, 4);
+
+    packet->options[21] = 255;  // Fin de opciones
 }
 
 // Construye un DHCP ACK
