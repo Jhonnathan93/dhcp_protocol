@@ -149,14 +149,14 @@ int is_duplicate_xid(uint32_t xid, uint8_t *mac) {
 }
 
 // Construye un DHCP Offer
-void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip, uint8_t *mac) {
+void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip, uint8_t *mac, uint32_t xid) {
     memset(packet, 0, sizeof(struct dhcp_packet));
 
     packet->op = 2;  // Servidor -> Cliente
     packet->htype = 1;  // Ethernet
     packet->hlen = 6;   // Tamaño de la dirección HW
     packet->hops = 0;
-    packet->xid = htonl(0x12345678);
+    packet->xid = xid;  // Usa el xid original
     packet->secs = 0;
     packet->flags = 0;
     packet->ciaddr = 0;
@@ -190,113 +190,125 @@ void construct_dhcp_offer(struct dhcp_packet *packet, uint32_t offered_ip, uint8
     uint32_t dns_server = inet_addr("8.8.8.8");
     memcpy(&packet->options[17], &dns_server, 4);
 
-    packet->options[21] = 255;  // Fin de opciones
+    // Opción 51: Tiempo de arrendamiento (lease time)
+    packet->options[21] = 51;
+    packet->options[22] = 4;
+    uint32_t lease_time = htonl(LEASE_TIME);
+    memcpy(&packet->options[23], &lease_time, 4);
+
+    // Opción 54: Servidor DHCP
+    packet->options[27] = 54;
+    packet->options[28] = 4;
+    uint32_t dhcp_server = inet_addr("192.168.0.1");
+    memcpy(&packet->options[29], &dhcp_server, 4);
+
+    // Fin de las opciones
+    packet->options[33] = 255;
 }
 
-// Construye un DHCP ACK
-void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip, uint8_t *mac) {
+// Construye un DHCP NAK
+void construct_dhcp_nak(struct dhcp_packet *packet, uint8_t *mac, uint32_t xid) {
     memset(packet, 0, sizeof(struct dhcp_packet));
 
-    packet->op = 2;
-    packet->htype = 1;
+    packet->op = 2;  // Servidor -> Cliente
+    packet->htype = 1;  // Ethernet
     packet->hlen = 6;
     packet->hops = 0;
-    packet->xid = htonl(0x12345678);
+    packet->xid = xid;
     packet->secs = 0;
     packet->flags = 0;
     packet->ciaddr = 0;
-    packet->yiaddr = htonl(assigned_ip);  // IP asignada
+    packet->yiaddr = 0;  // No se asigna IP
     packet->siaddr = inet_addr("192.168.0.1");
     packet->giaddr = 0;
     memcpy(packet->chaddr, mac, 6);
 
     packet->magic_cookie = htonl(DHCP_MAGIC_COOKIE);
 
-    //Opciones DHCP
-    packet->options[0] = 53;
+    // Opciones DHCP
+    packet->options[0] = 53;  // Opción 53: Tipo de mensaje
     packet->options[1] = 1;
-    packet->options[2] = DHCP_ACK;
+    packet->options[2] = DHCP_NAK;
 
-    packet->options[3] = 255;  // Fin de opciones
+    // Opción 54: Servidor DHCP
+    packet->options[3] = 54;
+    packet->options[4] = 4;
+    uint32_t dhcp_server = inet_addr("192.168.0.1");
+    memcpy(&packet->options[5], &dhcp_server, 4);
+
+    // Fin de las opciones
+    packet->options[9] = 255;
 }
 
-void process_dhcp_message(int server_socket) {
-    struct dhcp_packet dhcp_request, dhcp_offer, dhcp_ack;
+// Función para procesar los mensajes DHCP
+void process_dhcp_message(int sockfd) {
     struct sockaddr_in client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
-    uint8_t client_mac[6];
-    uint32_t offered_ip;
-    uint32_t xid;
+    socklen_t addr_len = sizeof(client_addr);
+    struct dhcp_packet dhcp_request, dhcp_response;
 
     while (1) {
-        release_expired_ips();
+        release_expired_ips();  // Liberar IPs expiradas
 
-        // Recibir mensajes DHCP
-        if (recvfrom(server_socket, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&client_addr, &client_addr_len) < 0) {
-            perror("Error al recibir datos");
+        if (recvfrom(sockfd, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&client_addr, &addr_len) < 0) {
+            perror("Error recibiendo mensaje DHCP");
             continue;
         }
 
-        memcpy(client_mac, dhcp_request.chaddr, 6);
-        xid = ntohl(dhcp_request.xid);
+        uint32_t requested_xid = dhcp_request.xid;
+        uint8_t *client_mac = dhcp_request.chaddr;
 
-        printf("The client mac is: %02x:%02x:%02x:%02x:%02x:%02x\n", client_mac[0], client_mac[1], client_mac[2], client_mac[3], client_mac[4], client_mac[5]);
-        // Manejar DHCP Discover
-        if (dhcp_request.options[0] == 53 && dhcp_request.options[1] == 1 && dhcp_request.options[2] == DHCP_DISCOVER) {
-            printf("DHCP Discover recibido del cliente.\n");
+        if (is_duplicate_xid(requested_xid, client_mac)) {
+            printf("Solicitud DHCP duplicada, ignorando...\n");
+            continue;
+        }
 
-            // Verificar si es una solicitud duplicada por `xid`
-            if (is_duplicate_xid(xid, client_mac)) {
-                printf("Solicitud duplicada ignorada (xid = %u).\n", xid);
-                continue;
-            }
+        if (dhcp_request.options[2] == DHCP_DISCOVER) {
+            printf("Recibido DHCP DISCOVER\n");
 
-            // Verificar si el cliente ya tiene una IP asignada
-            offered_ip = find_ip_by_mac(client_mac);
+            uint32_t offered_ip = find_ip_by_mac(client_mac);
             if (offered_ip == 0) {
-                offered_ip = find_free_ip();
-                if (offered_ip == 0) {
-                    printf("No hay más direcciones IP disponibles.\n");
-                    continue;
-                }
-                assign_ip_to_client(offered_ip, client_mac, xid);
+                offered_ip = find_free_ip();  // Busca una nueva IP si no tiene una asignada
             }
 
-            // Construir y enviar el DHCPOFFER
-            construct_dhcp_offer(&dhcp_offer, offered_ip, client_mac);
-            if (sendto(server_socket, &dhcp_offer, sizeof(dhcp_offer), 0, (struct sockaddr *)&client_addr, client_addr_len) < 0) {
-                perror("Error al enviar DHCP OFFER");
+            if (offered_ip != 0) {
+                assign_ip_to_client(offered_ip, client_mac, requested_xid);
+                construct_dhcp_offer(&dhcp_response, offered_ip, client_mac, requested_xid);
+                sendto(sockfd, &dhcp_response, sizeof(dhcp_response), 0, (struct sockaddr *)&client_addr, addr_len);
+                printf("DHCP OFFER enviado a IP %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));
             } else {
-                printf("DHCPOFFER enviado a cliente.\n");
+                printf("No hay IPs disponibles, enviando DHCP NAK\n");
+                construct_dhcp_nak(&dhcp_response, client_mac, requested_xid);
+                sendto(sockfd, &dhcp_response, sizeof(dhcp_response), 0, (struct sockaddr *)&client_addr, addr_len);
+            }
+
+        } else if (dhcp_request.options[2] == DHCP_REQUEST) {
+            printf("Recibido DHCP REQUEST\n");
+
+            uint32_t requested_ip = ntohl(*(uint32_t *)&dhcp_request.options[4]);  // IP solicitada en la opción
+            uint32_t assigned_ip = find_ip_by_mac(client_mac);
+
+            if (assigned_ip == requested_ip) {
+                construct_dhcp_ack(&dhcp_response, assigned_ip, client_mac, requested_xid);
+                sendto(sockfd, &dhcp_response, sizeof(dhcp_response), 0, (struct sockaddr *)&client_addr, addr_len);
+                printf("DHCP ACK enviado a IP %s\n", inet_ntoa(*(struct in_addr *)&assigned_ip));
+            } else {
+                printf("IP solicitada no válida o no asignada, enviando DHCP NAK\n");
+                construct_dhcp_nak(&dhcp_response, client_mac, requested_xid);
+                sendto(sockfd, &dhcp_response, sizeof(dhcp_response), 0, (struct sockaddr *)&client_addr, addr_len);
             }
         }
-
-        // Manejar DHCP Request
-        if (dhcp_request.options[0] == 53 && dhcp_request.options[1] == 1 && dhcp_request.options[2] == DHCP_REQUEST) {
-            printf("DHCP Request recibido del cliente.\n");
-
-            // Enviar el DHCPACK al cliente
-            construct_dhcp_ack(&dhcp_ack, offered_ip, client_mac);
-            if (sendto(server_socket, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&client_addr, client_addr_len) < 0) {
-                perror("Error al enviar DHCP ACK");
-            } else {
-                printf("DHCP ACK enviado: IP asignada = %s\n", inet_ntoa(*(struct in_addr *)&dhcp_ack.yiaddr));
-            }
-        }
-
-        printf("(xid = %u)\n", xid);
     }
 }
 
 int main() {
-    int server_socket;
+    int sockfd;
     struct sockaddr_in server_addr;
 
-    // Crear socket UDP
-    server_socket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (server_socket < 0) {
-        perror("No se pudo crear el socket");
-        return 1;
+    // Crear el socket
+    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("Error creando el socket");
+        exit(1);
     }
 
     // Configurar la dirección del servidor
@@ -304,22 +316,17 @@ int main() {
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(67);  // Puerto DHCP
 
-    // Enlazar socket a la dirección del servidor
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error en el bind");
-        close(server_socket);
-        return 1;
+    // Asociar el socket a la dirección y puerto
+    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Error asociando el socket");
+        exit(1);
     }
 
-    printf("Servidor DHCP iniciado...\n");
+    init_ip_pool();  // Inicializar el pool de IPs
 
-    // Inicializar el pool de IPs
-    init_ip_pool();
+    // Procesar los mensajes DHCP
+    process_dhcp_message(sockfd);
 
-    // Procesar mensajes DHCP
-    process_dhcp_message(server_socket);
-
-    // Cerrar socket del servidor
-    close(server_socket);
+    close(sockfd);
     return 0;
 }
