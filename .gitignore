@@ -3,3 +3,4 @@ dhcp_s
 dhcp_relay
 dhcp_client
 dhcp_server
+dhcp_s_concurrent
