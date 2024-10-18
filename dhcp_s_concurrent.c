@@ -105,8 +105,8 @@ void assign_ip_to_client(uint32_t ip, uint8_t *mac, uint32_t xid) {
         if (ip_pool[i].ip == 0) {  // Buscar una entrada libre
             ip_pool[i].ip = ip;
             memcpy(ip_pool[i].mac, mac, 6);
-            ip_pool[i].lease_start = time(NULL);
-            ip_pool[i].lease_duration = LEASE_TIME;
+            // ip_pool[i].lease_start = time(NULL);    //Revision
+            // ip_pool[i].lease_duration = LEASE_TIME; //Revision
             ip_pool[i].xid = xid;  // Guarda el xid para controlar duplicados
             break;
         }
@@ -118,7 +118,7 @@ void release_expired_ips() {
     pthread_mutex_lock(&pool_mutex);  // Bloquear el acceso al pool
     time_t current_time = time(NULL);
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (ip_pool[i].ip != 0) {
+        if (ip_pool[i].ip != 0 && ip_pool[i].lease_start != 0) {
             if (difftime(current_time, ip_pool[i].lease_start) > ip_pool[i].lease_duration) {
                 printf("IP Lease duration: %.f seconds\n", difftime(current_time, ip_pool[i].lease_start));
                 printf("IP %s liberada (lease expirado).\n", inet_ntoa(*(struct in_addr *)&ip_pool[i].ip));
@@ -220,8 +220,8 @@ void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip, uint8_
     pthread_mutex_lock(&pool_mutex);  // Bloquear el acceso al pool
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (memcmp(ip_pool[i].mac, mac, 6) == 0 && ip_pool[i].ip == assigned_ip) {
-            ip_pool[i].lease_start = time(NULL);  // Reiniciar el tiempo de lease
-            ip_pool[i].lease_duration = LEASE_TIME;  // Establecer la duración del lease
+            ip_pool[i].lease_start = time(NULL);  // Iniciar el lease en el momento de ACK
+            ip_pool[i].lease_duration = LEASE_TIME;
             break;
         }
     }
@@ -293,7 +293,7 @@ void *handle_client_request(void *arg) {
             assign_ip_to_client(offered_ip, client_mac, xid);
         }
 
-        pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool
+        pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool (ponero aqui o en la linea 306)
 
         // Construir y enviar el DHCPOFFER
         struct dhcp_packet dhcp_offer;
