@@ -260,7 +260,7 @@ void *handle_client_request(void *arg) {
     struct dhcp_packet *dhcp_request = &request->dhcp_request;
     uint8_t client_mac[6];
     memcpy(client_mac, dhcp_request->chaddr, 6);
-    uint32_t xid = htonl(dhcp_request->xid);
+    uint32_t xid = ntohl(dhcp_request->xid);
     uint32_t offered_ip = 0;
 
     // Manejo de DHCP Discover
@@ -272,7 +272,11 @@ void *handle_client_request(void *arg) {
         offered_ip = find_ip_by_mac(client_mac); // Verificar si ya tiene IP
 
         if (offered_ip != 0) {
-            printf("Cliente ya tiene una IP asignada: %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));yy
+            char mac_address[18];
+            sprintf(mac_address, "%02X:%02X:%02X:%02X:%02X:%02X",
+                    client_mac[0], client_mac[1], client_mac[2], 
+                    client_mac[3], client_mac[4], client_mac[5]);
+            printf("Cliente con MAC %s ya tiene una IP asignada.\n", mac_address);
             // No necesitamos asignar una nueva IP, usamos la existente
         } else {
             offered_ip = find_free_ip();
