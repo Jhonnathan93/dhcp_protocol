@@ -29,6 +29,16 @@ struct dhcp_packet {
     uint8_t options[312];
 };
 
+// Función para obtener el tipo de mensaje DHCP
+uint8_t get_dhcp_message_type(struct dhcp_packet *packet) {
+    for (int i = 0; i < sizeof(packet->options); i++) {
+        if (packet->options[i] == 53) { // Buscar la opción DHCP Message Type
+            return packet->options[i + 2]; // El valor del tipo de mensaje está dos posiciones después
+        }
+    }
+    return 0;
+}
+
 int main() {
     int relay_sock;
     struct sockaddr_in relay_addr, client_addr, server_addr;
@@ -55,21 +65,45 @@ int main() {
         exit(1);
     }
 
-
     // Ciclo infinito para recibir y reenviar paquetes
     while (1) {
         printf("Esperando paquete DHCP del cliente...\n");
-        // Recibir paquete DHCP Discover del cliente
+
+        // Recibir paquete DHCP Discover o Request del cliente
         int recv_len = recvfrom(relay_sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)&client_addr, &addr_len);
         if (recv_len < 0) {
             perror("Error al recibir paquete del cliente");
-        } else {
-            printf("Paquete recibido con tamaño: %d bytes\n", recv_len);
+            continue;
         }
 
-
+        printf("Paquete recibido con tamaño: %d bytes\n", recv_len);
         printf("Paquete recibido del cliente con xid: %u\n", ntohl(dhcp_request.xid));
 
+        // Identificar el tipo de paquete DHCP
+        uint8_t dhcp_message_type = get_dhcp_message_type(&dhcp_request);
+
+        // // Manejar el paquete según su tipo
+        // switch (dhcp_message_type) {
+        //     case DHCP_DISCOVER:
+        //         printf("El paquete es un DHCP Discover\n");
+        //         break;
+
+        //     case DHCP_REQUEST:
+        //         printf("El paquete es un DHCP Request\n");
+        //         break;
+
+        //     case DHCP_OFFER:
+        //         printf("El paquete es un DHCP Offer\n");
+        //         break;
+
+        //     case DHCP_ACK:
+        //         printf("El paquete es un DHCP ACK\n");
+        //         break;
+
+        //     default:
+        //         printf("Paquete DHCP desconocido o no soportado.\n");
+        //         continue;
+        // }
 
         // Configurar la dirección del servidor DHCP
         memset(&server_addr, 0, sizeof(server_addr));
@@ -81,7 +115,6 @@ int main() {
         dhcp_request.giaddr = inet_addr("192.168.0.2");  // IP del relay (gateway)
         printf("Reenviando paquete al servidor DHCP con giaddr: %s\n", inet_ntoa(*(struct in_addr *)&dhcp_request.giaddr));
 
-
         // Reenviar el paquete al servidor DHCP
         if (sendto(relay_sock, &dhcp_request, recv_len, 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
             perror("Error al reenviar paquete al servidor DHCP");
@@ -89,6 +122,41 @@ int main() {
         }
 
         printf("Paquete reenviado al servidor DHCP.\n");
+
+        // Esperar la respuesta del servidor DHCP (Offer o ACK)
+        printf("Esperando respuesta del servidor DHCP...\n");
+        int resp_len = recvfrom(relay_sock, &dhcp_request, sizeof(dhcp_request), 0, NULL, NULL);
+        if (resp_len < 0) {
+            perror("Error al recibir respuesta del servidor DHCP");
+            continue;
+        }
+
+        printf("Respuesta del servidor DHCP recibida, tamaño: %d bytes\n", resp_len);
+
+        // Identificar el tipo de mensaje recibido del servidor (Offer o ACK)
+        dhcp_message_type = get_dhcp_message_type(&dhcp_request);
+
+        // switch (dhcp_message_type) {
+        //     case DHCP_OFFER:
+        //         printf("Respuesta recibida: DHCP Offer\n");
+        //         break;
+
+        //     case DHCP_ACK:
+        //         printf("Respuesta recibida: DHCP ACK\n");
+        //         break;
+
+        //     default:
+        //         printf("Respuesta DHCP desconocida.\n");
+        //         continue;
+        // }
+
+        // Reenviar la respuesta al cliente
+        if (sendto(relay_sock, &dhcp_request, resp_len, 0, (struct sockaddr *)&client_addr, addr_len) < 0) {
+            perror("Error al reenviar respuesta al cliente");
+            continue;
+        }
+
+        printf("Respuesta DHCP reenviada al cliente.\n");
     }
 
     close(relay_sock);
