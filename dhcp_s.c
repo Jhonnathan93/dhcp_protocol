@@ -92,8 +92,7 @@ void assign_ip_to_client(uint32_t ip, uint8_t *mac, uint32_t xid) {
         if (ip_pool[i].ip == 0) {  // Buscar una entrada libre
             ip_pool[i].ip = ip;
             memcpy(ip_pool[i].mac, mac, 6);
-            ip_pool[i].lease_start = time(NULL);  // Tiempo de inicio del arrendamiento
-            ip_pool[i].lease_duration = LEASE_TIME;
+            
             ip_pool[i].xid = xid;  // Guarda el xid para controlar duplicados
             break;
         }
@@ -105,6 +104,8 @@ void release_expired_ips() {
     time_t current_time = time(NULL);
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (ip_pool[i].ip != 0) {
+            printf("Hola");
+                printf("%i", difftime(current_time, ip_pool[i].lease_start));
             if (difftime(current_time, ip_pool[i].lease_start) > ip_pool[i].lease_duration) {
                 printf("IP %s liberada (lease expirado).\n", inet_ntoa(*(struct in_addr *)&ip_pool[i].ip));
                 ip_pool[i].ip = 0;
@@ -198,6 +199,9 @@ void construct_dhcp_ack(struct dhcp_packet *packet, uint32_t assigned_ip, uint8_
     packet->options[1] = 1;
     packet->options[2] = DHCP_ACK;
     packet->options[3] = 255;
+
+    ip_pool[i].lease_start = time(NULL);  // Set lease start time to the current time
+    ip_pool[i].lease_duration = DEFAULT_LEASE_DURATION;
 }
 
 // Construye un DHCP NAK
@@ -250,7 +254,7 @@ int main() {
             perror("Error al recibir datos");
             continue;
         }
-
+        printf("Hola2");
         memcpy(client_mac, dhcp_request.chaddr, 6);
         xid = ntohl(dhcp_request.xid);  // Extraemos el xid del cliente
 
@@ -303,7 +307,8 @@ int main() {
             }
         }
         // prueba de xid
-        printf("(xid = %u)", xid);
+        printf("(xid = %u)", xid );
+        printf("\n")
     }
 
     close(sock);
