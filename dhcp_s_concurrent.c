@@ -260,7 +260,7 @@ void *handle_client_request(void *arg) {
     struct dhcp_packet *dhcp_request = &request->dhcp_request;
     uint8_t client_mac[6];
     memcpy(client_mac, dhcp_request->chaddr, 6);
-    uint32_t xid = ntohl(dhcp_request->xid);
+    uint32_t xid = htonl(dhcp_request->xid);
     uint32_t offered_ip = 0;
 
     // Manejo de DHCP Discover
@@ -269,39 +269,35 @@ void *handle_client_request(void *arg) {
 
         pthread_mutex_lock(&pool_mutex);  // Bloquear el acceso al pool
 
-        // Verificar si es una solicitud duplicada por `xid`
-        if (is_duplicate_xid(xid, client_mac)) {
-            printf("Solicitud duplicada ignorada (xid = %u).\n", xid);
-            pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool
-            free(request);
-            pthread_exit(NULL);
-        }
+        offered_ip = find_ip_by_mac(client_mac); // Verificar si ya tiene IP
 
-        // Verificar si el cliente ya tiene una IP asignada
-        offered_ip = find_ip_by_mac(client_mac);
-        if (offered_ip == 0) {
+        if (offered_ip != 0) {
+            printf("Cliente ya tiene una IP asignada: %s\n", inet_ntoa(*(struct in_addr *)&offered_ip));yy
+            // No necesitamos asignar una nueva IP, usamos la existente
+        } else {
             offered_ip = find_free_ip();
             if (offered_ip == 0) {
                 printf("No hay más direcciones IP disponibles.\n");
+                // Enviar DHCP NAK al cliente
                 struct dhcp_packet dhcp_nak;
                 construct_dhcp_nak(&dhcp_nak, client_mac, xid);
                 sendto(request->sock, &dhcp_nak, sizeof(dhcp_nak), 0, (struct sockaddr *)&request->client_addr, request->client_addr_len);
-                pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool
+                pthread_mutex_unlock(&pool_mutex);
                 free(request);
                 pthread_exit(NULL);
             }
             assign_ip_to_client(offered_ip, client_mac, xid);
         }
 
-        pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool (ponero aqui o en la linea 306)
+        pthread_mutex_unlock(&pool_mutex);  // Desbloquear el acceso al pool
 
-        // Construir y enviar el DHCPOFFER
+        // Construir y enviar el DHCPOFFER con la IP asignada o existente
         struct dhcp_packet dhcp_offer;
         construct_dhcp_offer(&dhcp_offer, offered_ip, client_mac, xid);
         if (sendto(request->sock, &dhcp_offer, sizeof(dhcp_offer), 0, (struct sockaddr *)&request->client_addr, request->client_addr_len) < 0) {
             perror("Error al enviar DHCP OFFER");
         } else {
-            printf("DHCP Offer enviado a cliente.\n");
+            printf("DHCP Offer enviado a cliente. \n");
         }
     }
 
