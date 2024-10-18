@@ -103,13 +103,13 @@ void construct_dhcp_request(struct dhcp_packet *packet, uint32_t offered_ip, uin
     packet->options[9] = 255;  // Fin de opciones
 }
 
-void renew_lease(int sock, struct sockaddr_in *server_addr, uint32_t offered_ip, uint32_t xid) {
+void renew_lease(int sock, struct sockaddr_in *relay_addr, uint32_t offered_ip, uint32_t xid) {
     struct dhcp_packet dhcp_request;
-    socklen_t server_addr_len = sizeof(*server_addr);
+    socklen_t relay_addr_len = sizeof(*relay_addr);
 
     // Enviar DHCP Request para renovar el lease
     construct_dhcp_request(&dhcp_request, offered_ip, xid);
-    if (sendto(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)server_addr, server_addr_len) < 0) {
+    if (sendto(sock, &dhcp_request, sizeof(dhcp_request), 0, (struct sockaddr *)relay_addr, relay_addr_len) < 0) {
         perror("Error al enviar DHCP Request para renovación");
         close(sock);
         exit(1);
@@ -139,9 +139,9 @@ void parse_dhcp_options(uint8_t *options, uint32_t *subnet_mask, uint32_t *gatew
 
 int main() {
     int sock;
-    struct sockaddr_in server_addr;
+    struct sockaddr_in relay_addr;
     struct dhcp_packet dhcp_request, dhcp_ack, dhcp_nak, dhcp_discover, dhcp_offer;
-    socklen_t server_addr_len = sizeof(server_addr);
+    socklen_t relay_addr_len = sizeof(relay_addr);
     uint32_t offered_ip, ack_ip, subnet_mask = 0, gateway = 0, dns_server = 0;
     time_t lease_start;
     int lease_duration = LEASE_TIME;
@@ -156,13 +156,13 @@ int main() {
     }
 
     // Configurar la dirección del servidor DHCP
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(1067);  // Puerto DHCP
-    // server_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);  // Broadcast
+    memset(&relay_addr, 0, sizeof(relay_addr));
+    relay_addr.sin_family = AF_INET;
+    relay_addr.sin_port = htons(1067);  // Puerto DHCP
+    // relay_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);  // Broadcast
     //  Para el relay:
-    server_addr.sin_addr.s_addr = inet_addr("192.168.0.2");  // IP del relay
-    // server_addr.sin_addr = inet_addr("3.83.2.137");
+    relay_addr.sin_addr.s_addr = inet_addr("192.168.0.2");  // IP del relay
+    // relay_addr.sin_addr = inet_addr("3.83.2.137");
 
     // Habilitar el uso de broadcast en el socket
     int broadcastEnable = 1;
@@ -172,13 +172,13 @@ int main() {
         return 1;
     }
     // para el relay:
-    printf("Enviando DHCP Discover al relay en IP: %s\n", inet_ntoa(server_addr.sin_addr));
+    printf("Enviando DHCP Discover al relay en IP: %s\n", inet_ntoa(relay_addr.sin_addr));
     // Generar DHCP Discover con un xid único
     global_xid = rand();  // Generar un xid único
     construct_dhcp_discover(&dhcp_discover, global_xid);
 
     // Enviar DHCP Discover
-    if (sendto(sock, &dhcp_discover, sizeof(dhcp_discover), 0, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
+    if (sendto(sock, &dhcp_discover, sizeof(dhcp_discover), 0, (struct sockaddr *)&relay_addr, relay_addr_len) < 0) {
         perror("Error al enviar DHCP Discover");
         close(sock);
         return 1;
@@ -187,7 +187,7 @@ int main() {
     printf("DHCP Discover enviado con xid = %u.\n", global_xid);
 
     // Esperar DHCP Offer
-    if (recvfrom(sock, &dhcp_offer, sizeof(dhcp_offer), 0, (struct sockaddr *)&server_addr, &server_addr_len) < 0) {
+    if (recvfrom(sock, &dhcp_offer, sizeof(dhcp_offer), 0, (struct sockaddr *)&relay_addr, &relay_addr_len) < 0) {
         perror("Error al recibir DHCP Offer");
         close(sock);
         return 1;
@@ -206,10 +206,10 @@ int main() {
     printf("DNS Server: %s\n", inet_ntoa(*(struct in_addr *)&dns_server));
 
     // Enviar DHCP Request usando el mismo xid
-    renew_lease(sock, &server_addr, offered_ip, global_xid);
+    renew_lease(sock, &relay_addr, offered_ip, global_xid);
 
     // Esperar DHCP ACK
-    if (recvfrom(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&server_addr, &server_addr_len) < 0) {
+    if (recvfrom(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&relay_addr, &relay_addr_len) < 0) {
         perror("Error al recibir DHCP ACK");
         close(sock);
         return 1;
@@ -226,7 +226,7 @@ int main() {
     // sleep(lease_duration / 2);  // Dormir hasta la mitad del lease
 
         // Renovar el lease antes de que expire usando el mismo xid
-    // renew_lease(sock, &server_addr, offered_ip, global_xid);
+    // renew_lease(sock, &relay_addr, offered_ip, global_xid);
     // }
     
     
@@ -236,9 +236,9 @@ int main() {
         sleep(lease_duration / 2);
 
         // Renovar el lease antes de que expire usando el mismo xid
-        renew_lease(sock, &server_addr, offered_ip, global_xid);
+        renew_lease(sock, &relay_addr, offered_ip, global_xid);
         
-        if(recvfrom(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&server_addr, &server_addr_len) < 0){
+        if(recvfrom(sock, &dhcp_ack, sizeof(dhcp_ack), 0, (struct sockaddr *)&relay_addr, &relay_addr_len) < 0){
             perror("Error al recibir DHCP ACK.");
             continue;
         }
