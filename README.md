@@ -1,66 +1,182 @@
-﻿# Proyecto de DHCP (Cliente y Servidor)
+﻿
 
-Este proyecto consiste en la implementación de un **servidor DHCP** y un **cliente DHCP** en lenguaje C. Ambos programas siguen el protocolo DHCP (Dynamic Host Configuration Protocol), utilizado para asignar direcciones IP de manera dinámica a dispositivos en una red.
+# Proyecto de DHCP (Cliente y Servidor)
+## Introducción
 
-## Archivos del Proyecto
+El objetivo de este proyecto es implementar un **servidor DHCP** y un **cliente DHCP** utilizando el lenguaje de programación C. El protocolo DHCP (Dynamic Host Configuration Protocol) es esencial en redes modernas, ya que permite la asignación dinámica de direcciones IP y otros parámetros de configuración de red a dispositivos cliente, sin la necesidad de configuración manual. Este proyecto busca replicar las funcionalidades básicas del protocolo DHCP, incluyendo el manejo de mensajes clave, la gestión de arrendamientos (leases), la concurrencia para atender múltiples solicitudes y el manejo de solicitudes duplicadas basadas en la dirección MAC de los clientes.
+
+## Desarrollo del proyecto
+### Archivos del proyecto
 
 1. `dhcp_server.c`: Implementación del servidor DHCP que escucha solicitudes de clientes, asigna direcciones IP y envía respuestas con información de configuración de red.
 2. `dhcp_client.c`: Implementación del cliente DHCP que envía solicitudes al servidor DHCP y recibe la asignación de una dirección IP, junto con información de red como la máscara de subred, puerta de enlace y servidor DNS.
 3. `dhcp_relay.c`: Implementación del relay DHCP que facilita la comunicación entre clientes y servidores que no están en el mismo segmento de red.
 
-## `dhcp_server.c`
-
-#### Funcionalidad:
+### `dhcp_server.c`
 
 El servidor DHCP escucha solicitudes de **DHCP Discover** de los clientes en el puerto 67 (puerto estándar para DHCP en IPv4). Cuando recibe una solicitud válida, responde con un **DHCP Offer**, ofreciendo una dirección IP y otros parámetros de red como la máscara de subred, puerta de enlace y servidor DNS. Luego, si el cliente responde con un **DHCP Request** para confirmar la oferta, el servidor asigna la dirección IP y envía una respuesta **DHCP Acknowledgement**.
 
 El servidor tiene una tabla de direcciones IP disponibles y registra qué direcciones han sido asignadas y a qué clientes (identificados por su dirección MAC).
 
-#### Proceso:
+#### Funcionalidades Implementadas
+-   **Envío de DHCPDISCOVER**: El cliente envía un mensaje DHCPDISCOVER al servidor DHCP para solicitar una dirección IP.
+-   **Recepción de DHCPOFFER**: El cliente recibe un mensaje DHCPOFFER del servidor con una dirección IP ofrecida y otros parámetros de red.
+-   **Envío de DHCPREQUEST**: El cliente envía un mensaje DHCPREQUEST para solicitar formalmente la dirección IP ofrecida.
+-   **Recepción de DHCPACK**: El cliente recibe un mensaje DHCPACK confirmando la asignación de la dirección IP.
+-   **Gestión de Leases**: El cliente gestiona el tiempo de arrendamiento (lease) y solicita renovaciones cuando es necesario.
+-   **Liberación de IP**: Al finalizar la ejecución, el cliente libera la dirección IP asignada pasado el tiempo del lease.
 
-1. **DHCP Discover**: El servidor recibe una solicitud de un cliente buscando una IP.
-2. **DHCP Offer**: El servidor responde ofreciendo una IP.
-3. **DHCP Request**: El cliente solicita formalmente la IP ofrecida.
-4. **DHCP Acknowledgement**: El servidor confirma la asignación de la IP.
+#### Aspectos Clave de la Implementación
 
-## `dhcp_client.c`
+-   **Estructura del Paquete DHCP**: Se definió una estructura `dhcp_packet` que representa el formato estándar de un paquete DHCP, incluyendo campos como `op`, `htype`, `hlen`, `xid`, `chaddr`, entre otros.
+-   **Generación de XID Único**: Se utiliza un identificador de transacción (`xid`) aleatorio para cada sesión, asegurando que las comunicaciones sean únicas y puedan ser identificadas correctamente por el servidor.
+-   **Manejo de Opciones DHCP**: El cliente analiza las opciones recibidas en los mensajes DHCP, como la máscara de subred, puerta de enlace predeterminada y servidor DNS.
+-   **Gestión del Tiempo de Arrendamiento**: Implementación de un ciclo que verifica el tiempo restante del lease y envía solicitudes de renovación antes de que expire.
 
-#### Funcionalidad:
+### `dhcp_client.c`
 
 El cliente DHCP envía un mensaje **DHCP Discover** en broadcast para encontrar un servidor DHCP. Una vez que recibe un **DHCP Offer**, el cliente analiza el paquete, muestra la dirección IP ofrecida y la información de red proporcionada (máscara de subred, puerta de enlace y servidor DNS). Posteriormente, envía un **DHCP Request** al servidor para confirmar la aceptación de la dirección IP, y recibe una respuesta final de **DHCP Acknowledgement** con la asignación definitiva.
 
-#### Proceso:
+#### Funcionalidades Implementadas
 
-1. **DHCP Discover**: El cliente envía un broadcast buscando servidores DHCP.
-2. **DHCP Offer**: El cliente recibe una oferta con una IP y configuración de red.
-3. **DHCP Request**: El cliente solicita formalmente la IP ofrecida.
-4. **DHCP Acknowledgement**: El servidor confirma la asignación de la IP.
+-   **Escucha de Solicitudes DHCP**: El servidor escucha en el puerto 67 para recibir mensajes DHCP de clientes.
+-   **Asignación Dinámica de IPs**: Gestiona un pool de direcciones IP definido por el usuario y asigna dinámicamente direcciones disponibles a los clientes.
+-   **Manejo de Mensajes DHCP**: Procesa los cuatro mensajes principales del protocolo DHCP: DHCPDISCOVER, DHCPOFFER, DHCPREQUEST y DHCPACK.
+-   **Gestión de Leases**: Controla el tiempo de arrendamiento de las direcciones IP asignadas y libera las IPs cuando el lease expira.
+-   **Concurrencia**: Implementa hilos (threads) para manejar múltiples solicitudes de clientes simultáneamente.
+-   **Manejo de Solicitudes Duplicadas**: Verifica si una dirección MAC ya tiene una IP asignada para evitar asignaciones duplicadas.
 
-## Preparativos
+#### Aspectos Clave de la Implementación
 
-### Instalación de Herramientas de Red
+-   **Estructura del Pool de IPs**: Se define una estructura `ip_assignment` que almacena la IP asignada, la MAC del cliente, el inicio y duración del lease, y el `xid` para identificar solicitudes.
+-   **Mutex para Sincronización**: Se utiliza un mutex (`pthread_mutex_t pool_mutex`) para proteger el acceso al pool de IPs y evitar condiciones de carrera en entornos concurrentes.
+-   **Hilos para Concurrencia**: Cada solicitud entrante es manejada por un nuevo hilo creado con `pthread_create`, permitiendo al servidor atender múltiples clientes al mismo tiempo.
+-   **Gestión de Leases**: Una función periódica verifica y libera las IPs cuyos leases han expirado.
+-   **Manejo de Mensajes DHCP**: Se implementan funciones para construir y enviar mensajes DHCPOFFER, DHCPACK y DHCPNAK, siguiendo el formato y opciones del protocolo.
+
+### `dhcp_relay.c`
+#### Funcionalidades Implementadas
+-   **Reenvío de Mensajes DHCP**: El relay recibe mensajes DHCP de clientes en una subred y los reenvía al servidor DHCP en otra subred.
+-   **Modificación del Campo `giaddr`**: El relay actualiza el campo `giaddr` (Gateway IP Address) en los paquetes DHCP para indicar al servidor la dirección del relay.
+-   **Gestión de Respuestas**: Recibe las respuestas del servidor DHCP y las reenvía al cliente original.
+#### Aspectos Clave de la Implementación
+-   **Socket UDP**: El relay utiliza sockets UDP para recibir y enviar paquetes DHCP.
+-   **Análisis del Tipo de Mensaje DHCP**: Se implementa una función para extraer el tipo de mensaje DHCP de las opciones del paquete.
+-   **Direcciones de Enlace**: Configura correctamente las direcciones y puertos para la comunicación entre el cliente, el relay y el servidor.
+
+### Mensajes DHCP Implementados
+
+1.  **DHCPDISCOVER**: Mensaje enviado por el cliente para descubrir servidores DHCP disponibles.
+2.  **DHCPOFFER**: Respuesta del servidor ofreciendo una dirección IP y configuración de red al cliente.
+3.  **DHCPREQUEST**: Mensaje del cliente aceptando la oferta y solicitando la dirección IP.
+4.  **DHCPACK**: Confirmación del servidor asignando la dirección IP al cliente.
+
+### Concurrencia
+#### Manejo de Múltiples Clientes
+El servidor DHCP está diseñado para manejar múltiples solicitudes de clientes simultáneamente. Esto es crucial en entornos de red donde varios dispositivos pueden estar intentando obtener configuraciones de red al mismo tiempo.
+#### Implementación de Hilos
+Para gestionar eficazmente las múltiples solicitudes y mantener un servicio fluido y reactivo, se utiliza la librería `pthread`. Esta librería permite la creación de hilos que operan de manera independiente para cada solicitud de cliente. Cada hilo maneja el ciclo completo de la comunicación DHCP para un cliente específico, desde la recepción del DHCPDISCOVER hasta el envío del DHCPACK.
+#### Sincronización
+Dado que múltiples hilos pueden acceder y modificar el pool de direcciones IP simultáneamente, se emplea un bloqueo/mutex (`pthread_mutex_t`) para sincronizar el acceso. El mutex garantiza que solo un hilo pueda interactuar con el pool de IPs en cualquier momento, previniendo así condiciones de carrera y asegurando la integridad de los datos.
+
+### Gestión de Leases
+#### Tiempo de Arrendamiento
+Cada dirección IP asignada por el servidor tiene un tiempo de lease definido, que en este caso es de 60 segundos. Este lease determina el período durante el cual el cliente puede utilizar la dirección IP sin necesidad de renovación.
+#### Renovación y Expiración
+El servidor mantiene un seguimiento del tiempo de arrendamiento de cada IP asignada. Antes de que expire un lease, el servidor espera recibir un DHCPREQUEST del cliente solicitando la renovación. Si no se recibe tal solicitud, el servidor libera la IP para que pueda ser reasignada a otro cliente.
+#### Actualización de Leases
+Cuando se recibe un DHCPREQUEST para la renovación de una IP, el servidor actualiza la información del lease asociada con esa IP en su pool. Esto incluye reiniciar el contador del tiempo de lease, permitiendo al cliente continuar usando la IP por otro período completo de lease.
+
+### Manejo de Solicitudes Duplicadas (MAC)
+#### Verificación de MAC
+Antes de asignar una nueva IP a un cliente, el servidor verifica si la dirección MAC del cliente ya tiene una IP asignada. Esta comprobación previene asignaciones duplicadas y permite una gestión eficiente del pool de direcciones IP.
+#### Reutilización de IP
+Si un cliente con una MAC conocida solicita una dirección IP y ya posee una cuyo lease no ha expirado, el servidor simplemente reofrece la misma IP. 
+#### Control de xid
+El servidor utiliza el identificador de transacción (`xid`) junto con la dirección MAC para detectar y gestionar solicitudes duplicadas. Esto asegura que las respuestas a solicitudes antiguas o repetidas no sean procesadas innecesariamente.
+
+### Aspectos Clave del Desarrollo
+
+#### Programación de Sockets
+
+Para la comunicación de red, el proyecto utiliza sockets UDP (`SOCK_DGRAM`). Los sockets UDP son ideales para el protocolo DHCP debido a su naturaleza sin conexión, lo que permite una comunicación rápida y eficiente sin la sobrecarga de establecer y mantener una conexión. Esta característica es esencial para DHCP, que necesita manejar rápidamente grandes volúmenes de solicitudes breves y distribuidas.
+
+#### Estructuras de Datos
+
+Se definen estructuras específicas para los paquetes DHCP y las asignaciones de IP, que reflejan los campos requeridos por el protocolo DHCP. Esto incluye elementos como `op`, `htype`, `hlen`, `xid`, y más, lo cual es crucial para el correcto formato y procesamiento de los mensajes DHCP.
+
+#### Análisis de Opciones DHCP
+
+Se implementan funciones para construir y analizar las opciones dentro de los paquetes DHCP. Esto permite al servidor y al cliente manejar configuraciones de red flexibles y proporcionar funcionalidades como la asignación de DNS y gateways.
+
+#### Manejo de Errores
+
+El proyecto incluye robustos controles de errores para manejar situaciones como la recepción de paquetes corruptos, la falta de direcciones IP disponibles y errores de red. Esto asegura que el servidor pueda operar de manera continua y confiable.
+
+#### Configuración de Red
+
+Se configuran específicamente rangos de direcciones IP y puertos para adaptarse a las necesidades del proyecto, considerando un entorno controlado. Esta configuración permite simular un entorno de red realista y validar el comportamiento del servidor y cliente DHCP.
+
+## Aspectos Logrados y No Logrados
+
+### Aspectos Logrados
+
+-   **Implementación Completa de los Mensajes DHCP Principales**: Se logró implementar exitosamente los mensajes DHCPDISCOVER, DHCPOFFER, DHCPREQUEST y DHCPACK.
+-   **Asignación Dinámica de IPs**: El servidor asigna direcciones IP de manera dinámica a los clientes, gestionando un pool de IPs disponible.
+-   **Concurrencia y Manejo de Múltiples Clientes**: Gracias a la implementación de hilos, el servidor puede atender múltiples solicitudes simultáneamente sin bloqueos.
+-   **Gestión de Leases**: Se implementó correctamente la gestión del tiempo de arrendamiento de las IPs, incluyendo la liberación de direcciones expiradas.
+-   **Manejo de Solicitudes Duplicadas**: El servidor verifica si un cliente ya tiene una IP asignada y evita asignaciones duplicadas basadas en la dirección MAC y el `xid`.
+-   **Implementación del Relay DHCP**: Se implementó un relay que permite a clientes en subredes diferentes comunicarse con el servidor DHCP.
+
+### Aspectos No Logrados
+
+
+## ¿Cómo ejecutar el programa?
+
+### Requisitos Previos
+
+#### Sistema Operativo
+
+-   Es necesario contar con un sistema operativo basado en Unix, como Ubuntu o cualquier otra distribución de Linux, ya que las instrucciones de configuración y comandos son específicos para estos sistemas.
+
+#### Herramientas Necesarias
+
+-   **GCC o otro compilador de C**: Necesario para compilar los programas escritos en C. Para instalar GCC en Ubuntu, ejecuta:
+```bash
+sudo apt update
+sudo apt install build-essential
+```
+
+#### Instalación de Herramientas de Red
 
 Para poder configurar las interfaces de red como se requiere para la prueba de los programas DHCP, necesitas tener instalado `net-tools`. Para instalarlo en Ubuntu, ejecuta:
 
 ```bash
-sudo apt update
 sudo apt install net-tools
 ```
 
-### Configuración de Interfaces de Red
+## Orden de Ejecución
+
+Es crucial iniciar los componentes en el orden correcto para asegurar que todos los elementos del sistema DHCP puedan comunicarse efectivamente:
+
+1.  **Relay DHCP**: Debe estar en funcionamiento antes de que el servidor comience a escuchar para garantizar que cualquier paquete dirigido al servidor a través del relay sea correctamente reenviado.
+2.  **Servidor DHCP**: Necesita estar activo antes de que cualquier cliente intente obtener una dirección IP.
+3.  **Cliente DHCP**: Debe ser el último en iniciarse, una vez que el relay y el servidor estén listos para manejar las solicitudes.
+
+## Configuración de Interfaces de Red
 Antes de ejecutar los programas, necesitarás configurar las interfaces de red en diferentes terminales para el relay DHCP y el servidor DHCP:
 
-## Relay DHCP:
+### Relay DHCP:
 ```bash
 sudo ifconfig eth0:0 192.168.0.2 netmask 255.255.255.0 up
 ```
 
-## Servidor DHCP:
+### Servidor DHCP:
 ```bash
 sudo ifconfig eth0:1 192.168.0.1 netmask 255.255.255.0 up
 ```
 
-## Cliente DHCP:
+### Cliente DHCP:
 ```bash
 sudo ifconfig eth0 0.0.0.0
 ```
