@@ -80,6 +80,7 @@ void construct_dhcp_discover(struct dhcp_packet *packet, uint32_t xid) {
 void construct_dhcp_request(struct dhcp_packet *packet, uint32_t offered_ip, uint32_t xid) {
     memset(packet, 0, sizeof(struct dhcp_packet));  // Limpia el paquete
 
+
     packet->op = 1;  // Cliente -> Servidor (solicitud)
     packet->htype = 1;  // Ethernet
     packet->hlen = 6;   // Longitud de la dirección de hardware (MAC)
@@ -189,7 +190,7 @@ int main() {
         return 1;
     }
 
-    printf("DHCP Discover enviado con xid = %u.\n", global_xid);
+        printf("DHCP Discover enviado con xid = %u.\n", global_xid);
 
     // Esperar un paquete DHCP Offer
     if (recvfrom(sock, &dhcp_offer, sizeof(dhcp_offer), 0, (struct sockaddr *)&relay_addr, &relay_addr_len) < 0) {
@@ -222,6 +223,7 @@ int main() {
 
     ack_ip = dhcp_ack.yiaddr;  // IP confirmada (en formato de red)
     printf("DHCP ACK recibido: IP reconocida = %s\n", inet_ntoa(*(struct in_addr *)&ack_ip));
+
 
     // Registrar la hora de inicio del lease
     lease_start = time(NULL);
