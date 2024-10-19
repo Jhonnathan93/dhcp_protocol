@@ -23,7 +23,7 @@
 - `sendto()`: Envía un paquete al cliente o servidor.
 - `bind()`: Asocia el socket del relay con una dirección específica.
 
-## Diagramas de secuencia:
+## Diagramas de secuencia (Relay):
 
 ![alt text](image-4.png)
 
