@@ -267,7 +267,18 @@ El relay DHCP se ejecuta enrutando paquetes entre el cliente y el servidor DHCP.
 sudo ./dhcp_relay
 ```
 
+## Conclusiones 
+
+El desarrollo de este proyecto ha sido una experiencia enriquecedora que ha permitido profundizar en el funcionamiento interno del protocolo DHCP y en la programación de redes en C. Aunque inicialmente resultó complejo debido a la falta de experiencia previa con sockets, hilos y protocolos de comunicación, el proceso permitió adquirir conocimientos valiosos en estas áreas.
+
+La implementación de un servidor y cliente DHCP funcionales requirió una comprensión detallada de los mensajes del protocolo, la gestión de estados y el manejo eficiente de recursos en un entorno concurrente. El uso de hilos y mutexes fue esencial para garantizar que el servidor pudiera atender múltiples solicitudes de manera segura y eficiente.
+
+Uno de los desafíos más significativos fue asegurar la correcta sincronización en el acceso al pool de direcciones IP y evitar condiciones de carrera. Además, manejar las solicitudes duplicadas y gestionar adecuadamente los leases de las IPs asignadas añadió un nivel adicional de complejidad al proyecto.
+
+A pesar de no haber implementado todas las funcionalidades avanzadas del protocolo DHCP, se logró construir una base sólida que cumple con los requerimientos principales y puede ser expandida en futuros trabajos.
+
 ## Referencias
 - **Dynamic Host Configuration Protocol (DHCP) Basics**: [Microsoft Docs](https://learn.microsoft.com/es-es/windows-server/troubleshoot/dynamic-host-configuration-protocol-basics)
 - **DHCP Configuration Guide**: [Hewlett Packard Enterprise](https://support.hpe.com/techhub/eginfolib/networking/docs/switches/5120si/cg/5998-8491_l3-ip-svcs_cg/content/436042653.htm)
 - **DHCP Lease Time Explained**: [ManageEngine OpUtils](https://www.manageengine.com/products/oputils/tech-topics/dhcp-lease-time.html)
+- **Conceptos básicos de redes**: [Cisco Network Academy](https://www.netacad.com/es/courses/networking-basics?courseLang=es-XL)
