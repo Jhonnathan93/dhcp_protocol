@@ -228,3 +228,8 @@ El relay DHCP se ejecuta enrutando paquetes entre el cliente y el servidor DHCP.
 ```bash
 sudo ./dhcp_relay
 ```
+
+## Referencias
+- **Dynamic Host Configuration Protocol (DHCP) Basics**: [Microsoft Docs](https://learn.microsoft.com/es-es/windows-server/troubleshoot/dynamic-host-configuration-protocol-basics)
+- **DHCP Configuration Guide**: [Hewlett Packard Enterprise](https://support.hpe.com/techhub/eginfolib/networking/docs/switches/5120si/cg/5998-8491_l3-ip-svcs_cg/content/436042653.htm)
+- **DHCP Lease Time Explained**: [ManageEngine OpUtils](https://www.manageengine.com/products/oputils/tech-topics/dhcp-lease-time.html)
