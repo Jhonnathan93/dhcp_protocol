@@ -23,8 +23,9 @@
 - `sendto()`: Envía un paquete al cliente o servidor.
 - `bind()`: Asocia el socket del relay con una dirección específica.
 
-## Diagramas de secuencia (Relay):
+## Diagramas de secuencia:
 
+El DHCP Relay actúa como intermediario entre el cliente DHCP y el servidor DHCP cuando están en diferentes subredes. Permite que las solicitudes DHCP atraviesen las subredes, asegurando que un solo servidor DHCP pueda gestionar direcciones IP para múltiples redes.
 ![alt text](image-4.png)
 
 1. **DHCP Discover**: El cliente envía este mensaje para encontrar un servidor DHCP.
