@@ -35,6 +35,16 @@ El servidor tiene una tabla de direcciones IP disponibles y registra qué direcc
 
 ### `dhcp_client.c`
 
+![alt text](image-3.png)
+
+#### Métodos del cliente DHCP:
+
+- `construct_dhcp_discover()`: Construye un paquete DHCP Discover para que el cliente busque un servidor DHCP.
+- `construct_dhcp_request()`: Construye un paquete DHCP Request para solicitar una IP ofrecida.
+- `renew_lease()`: Envía una solicitud para renovar el lease de la IP ofrecida.
+- `parse_dhcp_options()`: Analiza las opciones del paquete DHCP recibido (máscara de red, gateway, DNS).
+- `print_ip_bytes()`: Función auxiliar para imprimir los bytes de una dirección IP en formato legible.
+
 El cliente DHCP envía un mensaje **DHCP Discover** en broadcast para encontrar un servidor DHCP. Una vez que recibe un **DHCP Offer**, el cliente analiza el paquete, muestra la dirección IP ofrecida y la información de red proporcionada (máscara de subred, puerta de enlace y servidor DNS). Posteriormente, envía un **DHCP Request** al servidor para confirmar la aceptación de la dirección IP, y recibe una respuesta final de **DHCP Acknowledgement** con la asignación definitiva.
 
 ![alt text](image.png)
