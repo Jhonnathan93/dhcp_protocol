@@ -1,4 +1,4 @@
-![alt text](image.png)
+![alt text](image-3.png)
 
 ## Métodos del cliente DHCP:
 
@@ -8,9 +8,17 @@
 - `parse_dhcp_options()`: Analiza las opciones del paquete DHCP recibido (máscara de red, gateway, DNS).
 - `print_ip_bytes()`: Función auxiliar para imprimir los bytes de una dirección IP en formato legible.
 
-## ORGANIZAR
+---
 
-![alt text](image-1.png)
+![alt text](image-1.png) ![alt text](image.png)
+
+## Métodos del servidor DHCP:
+
+- `find_free_ip()`: Busca una IP libre.
+- `find_ip_by_mac()`: Encuentra la IP asignada a una MAC.
+- `assign_ip_to_client()`: Asigna una IP a un cliente.
+- `release_expired_ips()`: Libera IPs cuyos leases han expirado.
+- `handle_client_request()`: Gestiona la solicitud de un cliente en un hilo separado.
 
 ---
 
@@ -22,6 +30,8 @@
 - `recvfrom()`: Recibe un paquete desde el cliente o servidor.
 - `sendto()`: Envía un paquete al cliente o servidor.
 - `bind()`: Asocia el socket del relay con una dirección específica.
+
+---
 
 ## Diagramas de secuencia:
 
