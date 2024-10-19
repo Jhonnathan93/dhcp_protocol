@@ -256,6 +256,10 @@ void construct_dhcp_nak(struct dhcp_packet *packet, uint8_t *mac, uint32_t xid) 
 
 // Función que maneja cada solicitud del cliente
 void *handle_client_request(void *arg) {
+    pthread_t my_id = pthread_self();
+    printf("-------------------- \n");
+    printf("Hilo creado con ID: %lu\n", (unsigned long)my_id);
+    printf("-------------------- \n");
     struct client_request *request = (struct client_request *)arg;
     struct dhcp_packet *dhcp_request = &request->dhcp_request;
     uint8_t client_mac[6];
