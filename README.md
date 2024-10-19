@@ -168,6 +168,8 @@ Se configuran específicamente rangos de direcciones IP y puertos para adaptarse
 
 ### Aspectos No Logrados
 
+- **Despliegue en AWS**: Uno de los aspectos no logrados en este proyecto fue el despliegue y la configuración adecuada de los componentes del sistema DHCP en un entorno de nube, específicamente en Amazon Web Services (AWS). Aunque se logró establecer la comunicación directa entre el cliente y el servidor DHCP en AWS, no se pudo replicar con éxito la configuración que involucra al relay DHCP. Esto puede atribuirse a las complejidades adicionales en la configuración de red en un entorno de nube, donde las políticas de seguridad, las tablas de ruteo y los grupos de seguridad influyen significativamente en la comunicación entre instancias.
+
 
 ## ¿Cómo ejecutar el programa?
 
